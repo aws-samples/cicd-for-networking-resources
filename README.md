@@ -13,27 +13,23 @@ The folder structure for any networking resources managed via this pipeline foll
       - code.py
       - resource_config.csv
       
-validation-checks-template: These templates contain various tools and tests that needs to be performed to validate your network infrastructure and ensure the proposed changes do not cause any downtime. Templates for tools like VPC reachability analyzer, debugging tool for network connectivity, or Transit gateway Network Manager Route Analyzer can be created here.
+*validation-checks-template*: These templates contain various tools and tests that needs to be performed to validate your network infrastructure and ensure the proposed changes do not cause any downtime. Templates for tools like VPC reachability analyzer, debugging tool for network connectivity, or Transit gateway Network Manager Route Analyzer can be created here.
 
-accounts-dev.txt: The file consists of the IDs of OUs for dev environment. An example content of the file: 
+*accounts-dev.txt*: The file consists of the IDs of OUs for dev environment. An example content of the file: 
 ```
 [ “ou-abcd-pqrsx1z” ]
 ```
 
-accounts-prod.txt: The file consists of the IDs of OUs for production environment. The format of the file is same as accounts-dev.txt
+*accounts-prod.txt*: The file consists of the IDs of OUs for production environment. The format of the file is same as accounts-dev.txt
 
-cloudformation-resource-template: This is the template for creating or managing the networking resource that needs to be deployed in the accounts and regions by Cloudformation.
+*cloudformation-resource-template*: This is the template for creating or managing the networking resource that needs to be deployed in the accounts and regions by Cloudformation.
 
-cfn-guard.rules: This file contains various Checks AWS CloudFormation templates for policy compliance using a simple, policy-as-code, declarative syntax
+*cfn-guard.rules*: This file contains various Checks AWS CloudFormation templates for policy compliance using a simple, policy-as-code, declarative syntax
 
-code.py : The file contains the code written in python or any other language to perform the necessary api calls required for managing the resource.
+*code.py* : The file contains the code written in python or any other language to perform the necessary api calls required for managing the resource.
 
-resource_config.csv: The csv file contains expected rules for the resource that requires to be modified or created.
+*resource_config.csv*: The csv file contains expected rules for the resource that requires to be modified or created.
 
-Be sure to:
-
-* Change the title in this README
-* Edit your repository description on GitHub
 
 ## Security
 
