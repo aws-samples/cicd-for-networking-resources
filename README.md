@@ -1,5 +1,6 @@
 ## Moving towards devops approach to manage AWS networking resources
 
+## Folder structure
 The folder structure for any networking resources managed via this pipeline follows the convention as below:
 
 - ResourceName
@@ -8,10 +9,10 @@ The folder structure for any networking resources managed via this pipeline foll
   - accounts-prod.txt
   - cfn-guard.rules
   - config folder
-    - cloudformation-resource-template
-    - code folder
-      - code.py
-      - resource_config.csv
+      - cloudformation-resource-template
+      - code folder
+        - code.py
+        - resource_config.csv
       
 *validation-checks-template*: These templates contain various tools and tests that needs to be performed to validate your network infrastructure and ensure the proposed changes do not cause any downtime. Templates for tools like VPC reachability analyzer, debugging tool for network connectivity, or Transit gateway Network Manager Route Analyzer can be created here.
 
