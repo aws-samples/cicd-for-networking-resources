@@ -20,11 +20,14 @@ The folder structure for any networking resources managed via this pipeline foll
 [ “ou-abcd-pqrsx1z” ]
 ```
 
-*accounts-prod.txt*: The file consists of the IDs of OUs for production environment. The format of the file is same as accounts-dev.txt
+*accounts-prod.txt*: The file consists of the IDs of OUs for production environment. The format of the file is same as the dev :
+```
+[ “ou-abcd-pqrsx2z” ]
+```
 
 *cloudformation-resource-template*: This is the template for creating or managing the networking resource that needs to be deployed in the accounts and regions by Cloudformation.
 
-*cfn-guard.rules*: This file contains various Checks AWS CloudFormation templates for policy compliance using a simple, policy-as-code, declarative syntax
+*cfn-guard.rules*: This file contains various Checks AWS CloudFormation templates for policy compliance using a simple, policy-as-code, declarative syntax.
 
 *code.py* : The file contains the code written in python or any other language to perform the necessary api calls required for managing the resource.
 
