@@ -1,0 +1,26 @@
+Metadata-Version: 2.1
+Name: cfn-response
+Version: 0.0.4
+Summary: cfn-response is a micro package which exposes some
+    helpers to talk with CloudFormation from within python Lambda functions.
+    This package is intentionally small in order to be embedded lambda functions.
+    If you are looking to create aws-lambda backed Custom CloudFormation
+    resources using python, you are going to need this.
+Home-page: http://github.com/jorgebastida/cfn-response
+Author: Jorge Bastida
+Author-email: me@jorgebastida.com
+License: BSD
+Keywords: aws lambda cloudformation custom resources
+Platform: any
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 3
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Utilities
+
+UNKNOWN
+
+

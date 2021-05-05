@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Resources:
+    MacroExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+          AssumeRolePolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - 
+                  Effect: Allow
+                  Principal:
+                    Service: [lambda.amazonaws.com]
+                  Action: ['sts:AssumeRole']
+          Path: /
+          Policies:
+                - 
+                  PolicyName: root
+                  PolicyDocument:
+                    Version: 2012-10-17
+                    Statement:
+                      -
+                        Effect: Allow
+                        Action: ['logs:*']
+                        Resource: '*'                        
+
+    MacroFunction1:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: 'RulesReplicatorTransformFunction'
+            Code:
+                ZipFile: |
+                  import json
+
+                  def handler(event, context):
+
+                      print("Recieved Event: {}".format(json.dumps(event)))
+
+                      responseData = {}
+                      
+                      regions_to_deploy = event['templateParameterValues']['RegionsToDeploy']
+                      regions_to_deploy.remove(event['region'])
+                      pipeline_bucket_prefix = event['templateParameterValues']['PipelineBucketPrefix']
+                      accountId = event['accountId']
+
+                      fragment = []
+                      priority = 1
+
+                      for region in regions_to_deploy:
+                          fragment.append({
+                              "Destination": {
+                                  "Bucket": "arn:aws:s3:::{}-{}-{}".format(pipeline_bucket_prefix,accountId,region),
+                                  "StorageClass": "STANDARD"
+                                  },
+                              "DeleteMarkerReplication": {
+                                "Status": "Enabled"
+                              },
+                              "Id": "{}-{}-{}".format(pipeline_bucket_prefix,accountId,region),
+                              "Filter": {
+                                  "Prefix": ""
+                              },
+                              "Priority": priority,
+                              "Status": "Enabled"
+                          })
+                          priority+=1
+                          
+                      responseData = {
+                              "requestId": event["requestId"],
+                              "status": "success",
+                              "fragment": fragment
+                          }
+                      
+                      print("Sending Response {}".format(json.dumps(responseData)))
+
+                      return responseData
+            Handler: index.handler
+            Role: !GetAtt MacroExecutionRole.Arn
+            Runtime: python3.7
+            Timeout: '60'
+
+    MacroFunction2:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: 'ArrayTransformFunction'
+            Code:
+                ZipFile: |
+                  import json
+
+                  def handler(event, context):
+
+                      print("Recieved Event: {}".format(json.dumps(event)))
+
+                      regions_to_deploy = event['templateParameterValues']['RegionsToDeploy']
+                      
+                      try:
+                          regions_to_deploy.remove(event['region'])
+                          print("Modified Array: {}".format(regions_to_deploy))
+                      except ValueError:
+                          print("Home region not in regions to deploy! All good!")
+                          pass
+                      finally:
+                          responseData = {
+                                  "requestId": event["requestId"],
+                                  "status": "success",
+                                  "fragment": regions_to_deploy
+                              }
+                          print("Sending Response {}".format(json.dumps(responseData)))
+                          return responseData
+            Handler: index.handler
+            Role: !GetAtt MacroExecutionRole.Arn
+            Runtime: python3.7
+            Timeout: '60'
+
+    Macro1:
+      Type: AWS::CloudFormation::Macro
+      Properties:
+        Name: RulesReplicator
+        Description: Replicates Rules
+        FunctionName: !GetAtt MacroFunction1.Arn
+
+    Macro2:
+      Type: AWS::CloudFormation::Macro
+      Properties:
+        Name: ArrayTransformer
+        Description: Transform Arrays
+        FunctionName: !GetAtt MacroFunction2.Arn

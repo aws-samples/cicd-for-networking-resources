@@ -1,0 +1,568 @@
+# Template deploys resources across multiple environments, multiple accounts and regions by using Cloudformation Stacksets
+#   Pre-requisites:
+#      - Access to AWS Organizations management account.
+#      - Access to provision S3 buckets and Networking resources such as Security Groups, Route Tables, Transit Gateways
+#      - IAM role deployed for cloudformation Stackset access
+
+Parameters:
+  OrganizationID:
+    Description: Please specify the AWS Organization ID to deploy this solution.
+    Type: String
+    Default: 'o-iwv4oueuy7'
+  PrimaryEmailId:
+    Type: String
+    Description: Pleae specify the email to send Approval Notifications to.
+  InfrastructureRepository:
+    Type: String
+    Description: Codecommit repository name for storing the network resource deployment templates
+    Default: 'NetworkPipeline'
+  RegionsToDeploy:
+    Type: CommaDelimitedList
+  PipelineBucketPrefix:
+    Type: String
+    Default: networking-resources-deploy
+
+Resources:
+  #  S3 Bucket for holding the cloudformation templates
+  S3Bucket:
+    DependsOn: ReplicationBuckets
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join ['-' , [ !Ref PipelineBucketPrefix , !Ref "AWS::AccountId", !Ref "AWS::Region"]]
+      ReplicationConfiguration:  ### Move To Custom Resource
+        Role: !GetAtt S3Role.Arn
+        Rules:
+          Fn::Transform:
+            - Name: RulesReplicator
+      VersioningConfiguration:
+        Status: Enabled
+
+  S3BucketOrgPolicy: # S3 bucket policy allows remote account's access to cloudformation templates.
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref 'S3Bucket'
+      PolicyDocument:
+        Id: defaultOrgAccessPolicy
+        Version: '2012-10-17'
+        Statement:
+          - Sid: bucketPermissionsCheck
+            Effect: Allow
+            Action:
+              - s3:GetBucketAcl
+            Principal: "*"
+            Resource: !GetAtt S3Bucket.Arn
+            Condition:
+              StringEquals:
+                aws:PrincipalOrgID: !Ref OrganizationID
+          - Sid: AllowObjectReadWrite
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+            Principal: "*"
+            Resource: !Join ['/', [ !GetAtt S3Bucket.Arn, '*']]
+            Condition:
+              StringEquals:
+                aws:PrincipalOrgID: !Ref OrganizationID
+
+  StackSetAdministrationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: AssumeRole-AWSCloudFormationStackSetExecutionRole
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                Resource:
+                  - !Sub "arn:*:iam::*:role/${AWS::StackName}-ExecutionRole"
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-ExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Ref "AWS::AccountId"
+            Action:
+              - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess
+  
+  ReplicationBuckets:
+    DependsOn: ExecutionRole
+    Type: AWS::CloudFormation::StackSet
+    Properties: 
+      AdministrationRoleARN: !GetAtt StackSetAdministrationRole.Arn
+      Capabilities: 
+        - CAPABILITY_IAM
+      Description: Create Replication Buckets
+      ExecutionRoleName: !Sub ${AWS::StackName}-ExecutionRole
+      OperationPreferences: 
+        FailureToleranceCount: 0
+        MaxConcurrentCount: 1
+        RegionConcurrencyType: PARALLEL
+      Parameters: 
+        - ParameterKey: OrganizationID
+          ParameterValue: !Ref OrganizationID
+        - ParameterKey: PipelineBucketPrefix
+          ParameterValue: !Ref PipelineBucketPrefix
+      PermissionModel: SELF_MANAGED
+      StackInstancesGroup:
+        - DeploymentTargets:
+            Accounts:
+              - !Ref "AWS::AccountId"
+          Regions:
+            Fn::Transform:
+              Name: ArrayTransformer
+      StackSetName: !Sub ${AWS::StackName}-replication-buckets
+      TemplateBody: |
+        Parameters:
+          PipelineBucketPrefix:
+            Type: String
+            Default: networking-resources-deploy
+          OrganizationID:
+            Description: Please specify the AWS Organization ID to deploy this solution.
+            Type: String
+
+
+        Resources:
+          #  S3 Bucket for holding the cloudformation templates
+          S3Bucket:
+            Type: AWS::S3::Bucket
+            Properties:
+              BucketName: !Join ['-' , [ !Ref PipelineBucketPrefix , !Ref "AWS::AccountId", !Ref "AWS::Region"]]
+              VersioningConfiguration:
+                Status: Enabled
+
+          S3BucketOrgPolicy: # S3 bucket policy allows remote account's access to cloudformation templates.
+            Type: AWS::S3::BucketPolicy
+            Properties:
+              Bucket: !Ref 'S3Bucket'
+              PolicyDocument:
+                Id: defaultOrgAccessPolicy
+                Version: '2012-10-17'
+                Statement:
+                  - Sid: bucketPermissionsCheck
+                    Effect: Allow
+                    Action:
+                      - s3:GetBucketAcl
+                    Principal: "*"
+                    Resource: !GetAtt S3Bucket.Arn
+                    Condition:
+                      StringEquals:
+                        aws:PrincipalOrgID: !Ref OrganizationID
+                  - Sid: AllowObjectReadWrite
+                    Effect: Allow
+                    Action:
+                      - s3:GetObject
+                      - s3:PutObject
+                    Principal: "*"
+                    Resource: !Join ['/', [ !GetAtt S3Bucket.Arn, '*']]
+                    Condition:
+                      StringEquals:
+                        aws:PrincipalOrgID: !Ref OrganizationID
+
+  S3Role:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          -
+            Action: "sts:AssumeRole"
+            Effect: Allow
+            Principal:
+              Service:
+                - s3.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        -  arn:aws:iam::aws:policy/AmazonS3FullAccess
+      Path: /
+    Type: "AWS::IAM::Role"
+
+  NetworkResourceDeploymentPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub "${S3Bucket}-Pipeline"
+      RoleArn: !GetAtt CodePipeLineServiceRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: '1'
+                Provider: CodeCommit
+              OutputArtifacts:
+                - Name: SourceCode
+              Configuration:
+                PollForSourceChanges: false
+                BranchName: main
+                RepositoryName: !Ref InfrastructureRepository
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: '1'
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Sub "${S3Bucket}-Lint"
+              RunOrder: 1
+              InputArtifacts:
+                - Name: SourceCode
+              OutputArtifacts:
+                - Name: DeployableArtifact
+              Namespace: BuildVariables
+        - Name: Deploy
+          Actions:
+            - Name: DeployStackSetToDev
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormationStackSet
+                Version: '1'
+              RunOrder: 1
+              Configuration:
+                DeploymentTargets: DeployableArtifact::accounts-dev.txt
+                Capabilities: 'CAPABILITY_IAM,CAPABILITY_NAMED_IAM'
+                OrganizationsAutoDeployment: EnabledWithStackRetention
+                PermissionModel: SERVICE_MANAGED
+                StackSetName: aws-security-group-deploy-dev
+                Parameters:
+                  Fn::Sub: |
+                    ParameterKey=S3BucketPrefix,ParameterValue=${PipelineBucketPrefix}
+                    ParameterKey=S3Key,ParameterValue=config/#{BuildVariables.fileName}
+                    ParameterKey=ManagementAccountId,ParameterValue=${AWS::AccountId}
+                    ParameterKey=PipelineExecutionId,ParameterValue=#{codepipeline.PipelineExecutionId}
+                TemplatePath: 'DeployableArtifact::security-group.yaml'
+                Regions: !Join [",", !Ref RegionsToDeploy]
+              InputArtifacts:
+                - Name: DeployableArtifact
+              Namespace: DeploySgVariablesdev
+            #            - Name: DeployStackSetToDevACL
+            #              ActionTypeId:
+            #                Category: Deploy
+            #                Owner: AWS
+            #                Provider: CloudFormationStackSet
+            #                Version: '1'
+            #              RunOrder: 1
+            #              Configuration:
+            #                DeploymentTargets: DeployableArtifact::accounts-dev.txt
+            #                Capabilities: 'CAPABILITY_IAM,CAPABILITY_NAMED_IAM'
+            #                OrganizationsAutoDeployment: EnabledWithStackRetention
+            #                PermissionModel: SERVICE_MANAGED
+            #                StackSetName: aws-acl-group-deploy-dev
+            #                TemplatePath: 'DeployableArtifact::acl-group.yaml'
+            #                Regions: !Ref Region
+            #              InputArtifacts:
+            #                - Name: DeployableArtifact
+            #              Namespace: DeployAclVariablesDev
+            - Name: DeployToProdApproval
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: '1'
+                Provider: Manual
+              InputArtifacts: []
+              OutputArtifacts: []
+              Configuration:
+                NotificationArn: !Ref ApprovalTopic
+              RunOrder: 2
+            - Name: DeployStackSetToProd
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormationStackSet
+                Version: '1'
+              RunOrder: 3
+              Configuration:
+                DeploymentTargets: DeployableArtifact::accounts-prod.txt
+                Capabilities: 'CAPABILITY_IAM,CAPABILITY_NAMED_IAM'
+                OrganizationsAutoDeployment: EnabledWithStackRetention
+                PermissionModel: SERVICE_MANAGED
+                StackSetName: aws-security-group-deploy-prod
+                TemplatePath: 'DeployableArtifact::security-group.yaml'
+                Parameters:
+                  Fn::Sub: |
+                    ParameterKey=S3BucketPrefix,ParameterValue=${PipelineBucketPrefix}
+                    ParameterKey=S3Key,ParameterValue=config/#{BuildVariables.fileName}
+                    ParameterKey=ManagementAccountId,ParameterValue=${AWS::AccountId}
+                    ParameterKey=PipelineExecutionId,ParameterValue=#{codepipeline.PipelineExecutionId}
+                Regions: !Join [",", !Ref RegionsToDeploy]
+              InputArtifacts:
+                - Name: DeployableArtifact
+              Namespace: DeploySgVariablesprod
+      #            - Name: DeployStackSetToProd
+      #              ActionTypeId:
+      #                Category: Deploy
+      #                Owner: AWS
+      #                Provider: CloudFormationStackSet
+      #                Version: '1'
+      #              RunOrder: 3
+      #              Configuration:
+      #                DeploymentTargets: DeployableArtifact::accounts-prod.txt
+      #                Capabilities: 'CAPABILITY_IAM,CAPABILITY_NAMED_IAM'
+      #                OrganizationsAutoDeployment: EnabledWithStackRetention
+      #                PermissionModel: SERVICE_MANAGED
+      #                StackSetName: aws-acl-group-deploy-prod
+      #                TemplatePath: 'DeployableArtifact::acl-group.yaml'
+      #                Parameters: DeployableArtifact::acl-config.json
+      #                Regions: !Ref Region
+      #              InputArtifacts:
+      #                - Name: DeployableArtifact
+      #              Namespace: DeployAclVariablesProd
+      ArtifactStore:
+        Type: S3
+        Location: !Ref S3Bucket
+
+  BuildProjLint:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${S3Bucket}-Lint"
+      Description: CodeBuild for Common Infrastructure
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/python:3.6.5
+        PrivilegedMode: true
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec:
+          Fn::Sub: |
+            version: 0.2
+            env:
+              exported-variables:
+                - fileName
+            phases:
+              install:
+                commands:
+                  - echo "installing cfn-lint"
+                  - pip install cfn-lint
+                  - echo "installing uuid"
+                  - apt-get update -y
+                  - apt-get install uuid-runtime -y
+                  - apt-get install zip -y
+              build:
+                commands:
+                  - echo "Validating CFN syntax..."
+                  - ls -l
+                  - cfn-lint -t ./*/*/*.yaml
+                  - fileName=sg_$(uuidgen).zip
+                  - zip -j "./SecurityGroups/config/$fileName" -r ./SecurityGroups/config/code/
+                  - aws s3 cp --recursive ./SecurityGroups/config/ s3://${S3Bucket}/config/
+            artifacts:
+              files:
+                - '**/*/'
+              discard-paths: yes
+      TimeoutInMinutes: 10
+
+  ApprovalTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: !Ref PrimaryEmailId
+          Protocol: "email"
+      TopicName: "ApprovalNotifications"
+
+  CodePipeLineServiceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "codepipeline.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "CodePipelinePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "s3:DeleteObject"
+                  - "s3:GetObject"
+                  - "s3:GetObjectVersion"
+                  - "s3:ListBucket"
+                  - "s3:PutObject"
+                  - "s3:GetBucketPolicy"
+                Resource:
+                  - !Sub arn:aws:s3:::${S3Bucket}
+                  - !Sub arn:aws:s3:::${S3Bucket}/*
+              -
+                Effect: "Allow"
+                Action:
+                  - "codecommit:ListBranches"
+                  - "codecommit:ListRepositories"
+                  - "codecommit:BatchGetRepositories"
+                  - "codecommit:Get*"
+                  - "codecommit:GitPull"
+                  - "codecommit:UploadArchive"
+                  - "codecommit:GetBranch"
+                Resource:
+                  - Fn::Sub:
+                      - arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${RepoName}
+                      - RepoName: !Ref InfrastructureRepository
+              -
+                Effect: "Allow"
+                Action:
+                  - "cloudformation:CreateChangeSet"
+                  - "cloudformation:CreateStack*"
+                  - "cloudformation:CreateUploadBucket"
+                  - "cloudformation:DeleteStack*"
+                  - "cloudformation:Describe*"
+                  - "cloudformation:List*"
+                  - "cloudformation:UpdateStack*"
+                  - "cloudformation:ValidateTemplate"
+                  - "cloudformation:ExecuteChangeSet"
+                  - "sns:Publish"
+                Resource:
+                  - "*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "codebuild:StartBuild"
+                  - "codebuild:BatchGetBuilds"
+                Resource:
+                  - "*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "iam:PassRole"
+                Resource:
+                  - "*"
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: '*'
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetBucketPolicy
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${S3Bucket}
+                  - !Sub arn:aws:s3:::${S3Bucket}/*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - "cloudformation:*"
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - cloudformation:ValidateTemplate
+                  - ecr:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: '*'
+
+  CloudWatchEventsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        -
+          PolicyName: cwe-network-pipeline-execution
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Effect: Allow
+                Action: codepipeline:StartPipelineExecution
+                Resource: !Sub "arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${NetworkResourceDeploymentPipeline}"
+
+  CloudWatchEventsRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.codecommit
+        detail-type:
+          - 'CodeCommit Repository State Change'
+        resources:
+          - Fn::Sub:
+              - arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${RepoName}
+              - RepoName: !Ref InfrastructureRepository
+        detail:
+          event:
+            - referenceCreated
+            - referenceUpdated
+          referenceType:
+            - branch
+          referenceName:
+            - main
+      Targets:
+        -
+          Arn: !Sub "arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${NetworkResourceDeploymentPipeline}"
+          RoleArn: !GetAtt CloudWatchEventsRole.Arn
+          Id: codepipeline-Pipeline

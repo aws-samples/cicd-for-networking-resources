@@ -1,0 +1,50 @@
+## SAMPLE CUSTOM RESOURCE FOR DEPLOYING SG"
+Parameters:
+  S3BucketPrefix:
+    Type: String
+    Description: Bucket where SG Code is stored
+  S3Key:
+    Type: String
+    Description: Key of the Object
+  ManagementAccountId:
+    Type: String
+    Description: AccountId of the Pipeline
+  PipelineExecutionId:
+    Type: String
+Resources:
+  SGlambdafunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      Code:
+        S3Bucket: !Join ['-' , [ !Ref S3BucketPrefix,!Ref ManagementAccountId,!Ref "AWS::Region"]]
+        S3Key: !Ref S3Key
+      Timeout: 900
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+  SGCustomresource:
+    Type: Custom::SGCustomresource
+    Properties:
+      ServiceToken: !GetAtt SGlambdafunction.Arn
+      PipelineExecutionId: !Ref PipelineExecutionId
+Outputs:
+  LambdaFuntion:
+    Description: Lambda for managing security group rules
+    Value: !Ref SGlambdafunction

@@ -1,0 +1,2 @@
+AWS::EC2::SecurityGroup SecurityGroupIngress.* != {“CidrIp":"SSHLocation","FromPort":22,"IpProtocol":"tcp","ToPort":22}
+
