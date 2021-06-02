@@ -1,5 +1,6 @@
 ## Moving towards devops approach to manage AWS networking resources
-The repository contains the code that helps managing networking resources (for example - security groups) via pipeline. Assumption is you are using a security group with tag key set to ```pipeline-managed``` and value set to ```true``` in your AWS environment. You can manage any existing/new security groups as long as the security group has this tag. If the VPC doesn't have any security group with tag ```pipeline-managed:true```, then pipeline will create a new security group within each VPC with Name ```Pipeline_Managed_SG``` that can be associated with any of the resources as appropriate. The config parameters for the security groups are passed from a csv file with the following format :
+The repository contains the code that helps managing networking resources (for example - security groups) via pipeline. Assumption is you are using a security group with tag key set to ```pipeline-managed``` and value set to ```true``` in your AWS environment. You can manage any existing/new security groups as long as the security group has this tag. If the VPC doesn't have any security group with tag ```pipeline-managed:true```, then pipeline will create a new security group within each VPC with Name ```Pipeline_Managed_SG``` that can be associated with any of the resources as appropriate. 
+The config parameters for the security groups are passed from a csv file with the following format :
 
 ```
 direction;ipv4cidrs;ipv6cidrs;from_port;to_port;protocol;security_groups_references;prefix_list;
