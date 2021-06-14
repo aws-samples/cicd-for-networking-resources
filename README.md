@@ -12,6 +12,8 @@ The below snippet will create a security group rule that allows IPv4 CIDRs of 17
 ingress;172.16.0.0/16,10.0.0.0/8;;8060;8060;tcp;;
 ```
 
+##### Note : Please ensure to delete any empty lines at end of csv file. 
+
 ## Folder structure
 The folder structure for any networking resources managed via this pipeline follows the convention as below:
 
